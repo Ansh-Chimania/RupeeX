@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import aj from "@/lib/arcjet";
 import { request } from "@arcjet/next";
+import { inngest } from "@/lib/inngest/client";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -20,13 +21,11 @@ export async function createTransaction(data) {
     const { userId } = await auth();
     if (!userId) throw new Error("Unauthorized");
 
-    // Get request data for ArcJet
     const req = await request();
 
-    // Check rate limit
     const decision = await aj.protect(req, {
       userId,
-      requested: 1, // Specify how many tokens to consume
+      requested: 1,
     });
 
     if (decision.isDenied()) {
@@ -34,15 +33,11 @@ export async function createTransaction(data) {
         const { remaining, reset } = decision.reason;
         console.error({
           code: "RATE_LIMIT_EXCEEDED",
-          details: {
-            remaining,
-            resetInSeconds: reset,
-          },
+          details: { remaining, resetInSeconds: reset },
         });
 
         throw new Error("Too many requests. Please try again later.");
       }
-
       throw new Error("Request blocked");
     }
 
@@ -50,9 +45,7 @@ export async function createTransaction(data) {
       where: { clerkUserId: userId },
     });
 
-    if (!user) {
-      throw new Error("User not found");
-    }
+    if (!user) throw new Error("User not found");
 
     const account = await db.account.findUnique({
       where: {
@@ -61,15 +54,14 @@ export async function createTransaction(data) {
       },
     });
 
-    if (!account) {
-      throw new Error("Account not found");
-    }
+    if (!account) throw new Error("Account not found");
 
-    // Calculate new balance
-    const balanceChange = data.type === "EXPENSE" ? -data.amount : data.amount;
-    const newBalance = account.balance.toNumber() + balanceChange;
+    const balanceChange =
+      data.type === "EXPENSE" ? -data.amount : data.amount;
 
-    // Create transaction and update account balance
+    const newBalance =
+      account.balance.toNumber() + balanceChange;
+
     const transaction = await db.$transaction(async (tx) => {
       const newTransaction = await tx.transaction.create({
         data: {
@@ -77,7 +69,10 @@ export async function createTransaction(data) {
           userId: user.id,
           nextRecurringDate:
             data.isRecurring && data.recurringInterval
-              ? calculateNextRecurringDate(data.date, data.recurringInterval)
+              ? calculateNextRecurringDate(
+                data.date,
+                data.recurringInterval
+              )
               : null,
         },
       });
@@ -89,6 +84,16 @@ export async function createTransaction(data) {
 
       return newTransaction;
     });
+
+    // 🔥🔥 NEW: Trigger budget check instantly
+    await inngest.send({
+      name: "budget.check",
+      data: {
+        userId: user.id,
+      },
+    });
+
+    console.log("🚀 Budget check triggered");
 
     revalidatePath("/dashboard");
     revalidatePath(`/account/${transaction.accountId}`);
@@ -230,7 +235,7 @@ export async function getUserTransactions(query = {}) {
 // Scan Receipt
 export async function scanReceipt(file) {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     // Convert File to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
@@ -260,8 +265,8 @@ export async function scanReceipt(file) {
     const result = await model.generateContent([
       {
         inlineData: {
-          data: base64String,
           mimeType: file.type,
+          data: base64String,
         },
       },
       prompt,
