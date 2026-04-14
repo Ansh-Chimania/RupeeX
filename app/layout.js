@@ -7,17 +7,19 @@ import { Toaster } from "sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "A5L",
+  title: "RupeeX",
   description: "One stop Finance Platform",
+  icons: {
+    icon: "/final%20app%20icon.png",
+    shortcut: "/final%20app%20icon.png",
+    apple: "/final%20app%20icon.png",
+  },
 };
 
 export default function RootLayout({ children }) {
   return (
     <ClerkProvider>
       <html lang="en">
-        <head>
-          <link rel="icon" href="/logo-sm.png" sizes="any" />
-        </head>
         <body className={`${inter.className}`}>
           <Header />
           <main className="min-h-screen">{children}</main>

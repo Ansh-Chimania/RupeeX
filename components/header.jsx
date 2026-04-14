@@ -12,13 +12,13 @@ const Header = async () => {
   return (
     <header className="fixed top-0 w-full bg-white/80 backdrop-blur-md z-50 border-b">
       <nav className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <Link href="/">
+        <Link href="/" className="flex items-center">
           <Image
-            src={"/logo.png"}
-            alt="A5L Logo"
-            width={200}
-            height={60}
-            className="h-12 w-auto object-contain"
+            src="/final%20rupeex%20logo.png"
+            alt="RupeeX Logo"
+            width={220}
+            height={68}
+            className="h-14 w-auto object-contain"
           />
         </Link>
 
