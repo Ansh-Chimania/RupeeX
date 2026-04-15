@@ -32,7 +32,7 @@ export async function getAccountWithTransactions(accountId) {
       if (!user) return null;
     }
 
-    const account = await db.account.findUnique({
+    const account = await db.account.findFirst({
       where: {
         id: accountId,
         userId: user.id,
@@ -146,13 +146,28 @@ export async function updateDefaultAccount(accountId) {
     });
 
     // Then set the new default account
-    const account = await db.account.update({
+    const updatedCount = await db.account.updateMany({
       where: {
         id: accountId,
         userId: user.id,
       },
       data: { isDefault: true },
     });
+
+    if (!updatedCount.count) {
+      throw new Error("Account not found");
+    }
+
+    const account = await db.account.findFirst({
+      where: {
+        id: accountId,
+        userId: user.id,
+      },
+    });
+
+    if (!account) {
+      throw new Error("Account not found");
+    }
 
     revalidatePath("/dashboard");
     return { success: true, data: serializeDecimal(account) };

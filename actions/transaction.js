@@ -47,7 +47,7 @@ export async function createTransaction(data) {
 
     if (!user) throw new Error("User not found");
 
-    const account = await db.account.findUnique({
+    const account = await db.account.findFirst({
       where: {
         id: data.accountId,
         userId: user.id,
@@ -114,7 +114,7 @@ export async function getTransaction(id) {
 
   if (!user) throw new Error("User not found");
 
-  const transaction = await db.transaction.findUnique({
+  const transaction = await db.transaction.findFirst({
     where: {
       id,
       userId: user.id,
@@ -138,7 +138,7 @@ export async function updateTransaction(id, data) {
     if (!user) throw new Error("User not found");
 
     // Get original transaction to calculate balance change
-    const originalTransaction = await db.transaction.findUnique({
+    const originalTransaction = await db.transaction.findFirst({
       where: {
         id,
         userId: user.id,
@@ -166,7 +166,6 @@ export async function updateTransaction(id, data) {
       const updated = await tx.transaction.update({
         where: {
           id,
-          userId: user.id,
         },
         data: {
           ...data,
