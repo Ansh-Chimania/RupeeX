@@ -1,5 +1,6 @@
 "use server";
 
+import { checkUser } from "@/lib/checkUser";
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
@@ -15,37 +16,48 @@ const serializeDecimal = (obj) => {
   return serialized;
 };
 
+const shouldRethrow = (error) => error?.digest === "DYNAMIC_SERVER_USAGE";
+
 export async function getAccountWithTransactions(accountId) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  try {
+    const { userId } = await auth();
+    if (!userId) return null;
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+    let user = await db.user.findUnique({
+      where: { clerkUserId: userId },
+    });
 
-  if (!user) throw new Error("User not found");
+    if (!user) {
+      user = await checkUser();
+      if (!user) return null;
+    }
 
-  const account = await db.account.findUnique({
-    where: {
-      id: accountId,
-      userId: user.id,
-    },
-    include: {
-      transactions: {
-        orderBy: { date: "desc" },
+    const account = await db.account.findUnique({
+      where: {
+        id: accountId,
+        userId: user.id,
       },
-      _count: {
-        select: { transactions: true },
+      include: {
+        transactions: {
+          orderBy: { date: "desc" },
+        },
+        _count: {
+          select: { transactions: true },
+        },
       },
-    },
-  });
+    });
 
-  if (!account) return null;
+    if (!account) return null;
 
-  return {
-    ...serializeDecimal(account),
-    transactions: account.transactions.map(serializeDecimal),
-  };
+    return {
+      ...serializeDecimal(account),
+      transactions: account.transactions.map(serializeDecimal),
+    };
+  } catch (error) {
+    if (shouldRethrow(error)) throw error;
+    console.error("getAccountWithTransactions failed", error);
+    return null;
+  }
 }
 
 export async function bulkDeleteTransactions(transactionIds) {
@@ -143,7 +155,7 @@ export async function updateDefaultAccount(accountId) {
     });
 
     revalidatePath("/dashboard");
-    return { success: true, data: serializeTransaction(account) };
+    return { success: true, data: serializeDecimal(account) };
   } catch (error) {
     return { success: false, error: error.message };
   }

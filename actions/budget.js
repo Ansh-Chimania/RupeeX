@@ -1,20 +1,29 @@
 "use server";
 
+import { checkUser } from "@/lib/checkUser";
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 
+const emptyBudgetResponse = {
+  budget: null,
+  currentExpenses: 0,
+};
+
+const shouldRethrow = (error) => error?.digest === "DYNAMIC_SERVER_USAGE";
+
 export async function getCurrentBudget(accountId) {
   try {
     const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    if (!userId) return emptyBudgetResponse;
 
-    const user = await db.user.findUnique({
+    let user = await db.user.findUnique({
       where: { clerkUserId: userId },
     });
 
     if (!user) {
-      throw new Error("User not found");
+      user = await checkUser();
+      if (!user) return emptyBudgetResponse;
     }
 
     const budget = await db.budget.findFirst({
@@ -58,8 +67,9 @@ export async function getCurrentBudget(accountId) {
         : 0,
     };
   } catch (error) {
+    if (shouldRethrow(error)) throw error;
     console.error("Error fetching budget:", error);
-    throw error;
+    return emptyBudgetResponse;
   }
 }
 
