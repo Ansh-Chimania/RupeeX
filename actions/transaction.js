@@ -21,24 +21,32 @@ export async function createTransaction(data) {
     const { userId } = await auth();
     if (!userId) throw new Error("Unauthorized");
 
-    const req = await request();
+    try {
+      const req = await request();
 
-    const decision = await aj.protect(req, {
-      userId,
-      requested: 1,
-    });
+      const decision = await aj.protect(req, {
+        userId,
+        requested: 1,
+      });
 
-    if (decision.isDenied()) {
-      if (decision.reason.isRateLimit()) {
-        const { remaining, reset } = decision.reason;
-        console.error({
-          code: "RATE_LIMIT_EXCEEDED",
-          details: { remaining, resetInSeconds: reset },
-        });
+      if (decision.isDenied()) {
+        if (decision.reason.isRateLimit()) {
+          const { remaining, reset } = decision.reason;
+          console.error({
+            code: "RATE_LIMIT_EXCEEDED",
+            details: { remaining, resetInSeconds: reset },
+          });
 
-        throw new Error("Too many requests. Please try again later.");
+          throw new Error("Too many requests. Please try again later.");
+        }
+
+        throw new Error("Request blocked");
       }
-      throw new Error("Request blocked");
+    } catch (protectionError) {
+      console.warn(
+        "ArcJet protection unavailable, continuing transaction create:",
+        protectionError
+      );
     }
 
     const user = await db.user.findUnique({
@@ -85,15 +93,21 @@ export async function createTransaction(data) {
       return newTransaction;
     });
 
-    // 🔥🔥 NEW: Trigger budget check instantly
-    await inngest.send({
-      name: "budget.check",
-      data: {
-        userId: user.id,
-      },
-    });
+    try {
+      await inngest.send({
+        name: "budget.check",
+        data: {
+          userId: user.id,
+        },
+      });
 
-    console.log("🚀 Budget check triggered");
+      console.log("🚀 Budget check triggered");
+    } catch (eventError) {
+      console.warn(
+        "Inngest event delivery failed, transaction was still created:",
+        eventError
+      );
+    }
 
     revalidatePath("/dashboard");
     revalidatePath(`/account/${transaction.accountId}`);
